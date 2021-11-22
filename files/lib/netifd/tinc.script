@@ -1,0 +1,36 @@
+#!/bin/sh
+
+. /lib/netifd/netifd-proto.sh
+
+add_route() {
+	local route="$1"
+	local next target mask gw metric
+	target="${route%%/*}"
+	next="${route#*/}"
+	mask="${next%%,*}"
+	next="${next#*,}"
+	if [ "$next" != "$mask" ]; then
+		gw="${next%%,*}"
+		next="${next#*,}"
+		if [ "$next" == "$gw" ]; then
+			metric="$gw"
+			gw=""
+		else
+			metric="${next#*,}"
+		fi
+	fi
+	echo proto_add_ipv4_route \"$target\" \"$mask\" \"$gw\" \"$source\" \"$metric\"
+}
+
+proto_init_update "$INTERFACE" 1
+proto_add_ipv4_address "${IPADDR%%/*}" "${IPADDR##*/}"
+
+# target/mask,gw,metric
+# target/mask,metric
+# target/mask
+
+for route in $ROUTES; do
+	eval $(add_route $route)
+done
+
+proto_send_update "$CONFIG"
