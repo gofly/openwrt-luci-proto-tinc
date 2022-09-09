@@ -18,9 +18,9 @@ proto_tinc_init_config() {
 	renew_handler=1
 
 	proto_config_add_string ipaddr
+	proto_config_add_string ip6addr
 	proto_config_add_string name
 	proto_config_add_string bindtoaddr
-	proto_config_add_string listen
 	proto_config_add_string 'mode:or("router","switch","hub")'
 	proto_config_add_string 'priority:or("low","normal","high")'
 	proto_config_add_string 'strict_subnets:or("no","yes")'
@@ -28,13 +28,14 @@ proto_tinc_init_config() {
 	proto_config_add_array 'option:list(string)'
 	proto_config_add_array 'subnet:list(string)'
 	proto_config_add_array 'route:list(string)'
+	proto_config_add_int mtu
 }
 
 proto_tinc_setup() {
 	local config="$1"
 
-	local ipaddr name bindtoaddr listen connect connects mode priority strict_subnets option options subnet subnets route routes
-	json_get_vars ipaddr name bindtoaddr mode priority strict_subnets
+	local ipaddr ip6addr name bindtoaddr connect connects mode priority strict_subnets option options subnet subnets route routes mtu
+	json_get_vars ipaddr ip6addr name bindtoaddr mode priority strict_subnets mtu
 	json_for_each_item proto_tinc_append connect connects
 	json_for_each_item proto_tinc_append option options
 	json_for_each_item proto_tinc_append subnet subnets
@@ -42,7 +43,9 @@ proto_tinc_setup() {
 
 	proto_export CONFIG="$config"
 	proto_export IPADDR="$ipaddr"
+	proto_export IP6ADDR="$ip6addr"
 	proto_export ROUTES="$routes"
+	proto_export MTU="$mtu"
 
 	conf_dir="/etc/tinc/$config"
 	conf_file="$conf_dir/tinc.conf"
@@ -50,8 +53,7 @@ proto_tinc_setup() {
 	tmp_conf_file="$tmp_conf_dir/tinc.conf"
 
 	rm -rf $tmp_conf_dir
-	mkdir -p $conf_dir/hosts $tmp_conf_dir/hosts
-
+	mkdir -p $tmp_conf_dir/hosts
 	{
 		echo -e "Name=$name\nInterface=tinc-$config\nMode=$mode"
 		[ -z "$bindtoaddr" ] || echo "BindToAddress=$bindtoaddr"
@@ -65,7 +67,7 @@ proto_tinc_setup() {
 		for option in $options; do
 			echo "$option"
 		done
-	}  > $tmp_conf_file
+	} > $tmp_conf_file
 
 	if [ ! -f $conf_dir/hosts/$name ]; then
 		tincd -c $tmp_conf_dir -K
@@ -73,11 +75,16 @@ proto_tinc_setup() {
 		cp -rf $tmp_conf_dir/hosts $conf_dir/
 	fi
 
-	cp -rf /etc/tinc/$config/* $tmp_conf_dir
+	cp -rf /etc/tinc/$config/* $tmp_conf_dir/
 	cp -f /lib/netifd/tinc.script $tmp_conf_dir/tinc-up
 
 	{
-		echo -e "\nSubnet=${ipaddr%%/*}/32"
+		if [ -n "$ipaddr" ]; then
+			echo -e "\nSubnet=${ipaddr%%/*}/32"
+		fi
+		if [ -n "$ip6addr" ]; then
+			echo -e "\nSubnet=${ip6addr%%/*}/128"
+		fi
 
 		for subnet in $subnets; do
 			echo "Subnet=$subnet"
@@ -87,6 +94,7 @@ proto_tinc_setup() {
 	proto_run_command "$config" /usr/sbin/tincd \
 		-c $tmp_conf_dir \
 		--no-detach \
+		--mlock \
 		--pidfile=/var/run/tinc.${config}.pid \
 		--logfile=/tmp/log/tinc.${config}.log
 }
@@ -94,7 +102,7 @@ proto_tinc_setup() {
 proto_tinc_teardown() {
 	local config="$1"
 	logger -t tinc "stopping..."
-	proto_kill_command "$config" 15
+	proto_kill_command "$config" 9
 }
 
 proto_tinc_renew() {

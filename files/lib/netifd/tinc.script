@@ -4,8 +4,10 @@
 
 add_route() {
 	local route="$1"
-	local next target mask gw metric
-	target="${route%%/*}"
+	local next version target mask gw metric
+	version="${route%%,*}"
+	next="${route#*,}"
+	target="${next%%/*}"
 	next="${route#*/}"
 	mask="${next%%,*}"
 	next="${next#*,}"
@@ -19,18 +21,34 @@ add_route() {
 			metric="${next#*,}"
 		fi
 	fi
-	echo proto_add_ipv4_route \"$target\" \"$mask\" \"$gw\" \"$source\" \"$metric\"
+	if [ "$version" == "4" ]; then
+		echo proto_add_ipv4_route \"$target\" \"$mask\" \"$gw\" \"\" \"$metric\"
+	else
+		echo proto_add_ipv6_route \"$target\" \"$mask\" \"$gw\" \"$metric\"
+	fi
 }
 
 proto_init_update "$INTERFACE" 1
-proto_add_ipv4_address "${IPADDR%%/*}" "${IPADDR##*/}"
 
-# target/mask,gw,metric
-# target/mask,metric
-# target/mask
+if [ -n "$IPADDR" ]; then
+	proto_add_ipv4_address "${IPADDR%%/*}" "${IPADDR##*/}"
+fi
+
+if [ -n "$IP6ADDR" ]; then
+	proto_add_ipv6_address "${IP6ADDR%%/*}" "${IP6ADDR##*/}"
+fi
+
+# version,target/mask,gw,metric
+# version,target/mask,metric
+# version,target/mask
 
 for route in $ROUTES; do
 	eval $(add_route $route)
 done
+
+echo "MTU:$MTU">>/tmp/debug.txt
+if [ -n "$MTU" ]; then
+	ip link set $INTERFACE mtu $MTU
+fi
 
 proto_send_update "$CONFIG"
