@@ -47,15 +47,21 @@ proto_tinc_setup() {
 	proto_export ROUTES="$routes"
 	proto_export MTU="$mtu"
 
-	conf_dir="/etc/tinc/$config"
-	conf_file="$conf_dir/tinc.conf"
-	tmp_conf_dir="/tmp/tinc/$config"
-	tmp_conf_file="$tmp_conf_dir/tinc.conf"
+	config_dir="/etc/tinc/$config"
+	tmp_config_dir="/tmp/tinc/$config"
+	tmp_config_file="$tmp_config_dir/tinc.conf"
 
-	rm -rf $tmp_conf_dir
-	mkdir -p $tmp_conf_dir/hosts
+	rm -rf $tmp_config_dir
+	cp -rf $config_dir $tmp_config_dir
+	cp -f /lib/netifd/tinc.script $tmp_config_dir/tinc-up
+	chmod 755 $tmp_config_dir/tinc-up
+
+	mkdir -p $config_dir/hosts $tmp_config_dir/hosts
 	{
-		echo -e "Name=$name\nInterface=tinc-$config\nMode=$mode"
+		echo "Name=$name"
+		echo "Interface=tinc-$config"
+		echo "Mode=$mode"
+
 		[ -z "$bindtoaddr" ] || echo "BindToAddress=$bindtoaddr"
 		[ -z "$priority" ] || echo "ProcessPriority=$priority"
 		[ -z "$strict_subnets" ] || echo "StrictSubnets=$strict_subnets"
@@ -67,34 +73,30 @@ proto_tinc_setup() {
 		for option in $options; do
 			echo "$option"
 		done
-	} > $tmp_conf_file
+	} > $tmp_config_file
 
-	if [ ! -f $conf_dir/hosts/$name ]; then
-		tincd -c $tmp_conf_dir -K
-		cp -f $tmp_conf_dir/rsa_key.priv $conf_dir/
-		cp -rf $tmp_conf_dir/hosts $conf_dir/
+	if [ ! -f $tmp_config_dir/hosts/$name ]; then
+		tincd -c $tmp_config_dir -K
+		cp -f $tmp_config_dir/*.priv $config_dir
+		cp -rf $tmp_config_dir/hosts $config_dir
 	fi
-
-	cp -rf /etc/tinc/$config/* $tmp_conf_dir/
-	cp -f /lib/netifd/tinc.script $tmp_conf_dir/tinc-up
 
 	{
 		if [ -n "$ipaddr" ]; then
-			echo -e "\nSubnet=${ipaddr%%/*}/32"
+			echo "Subnet=${ipaddr%%/*}/32"
 		fi
 		if [ -n "$ip6addr" ]; then
-			echo -e "\nSubnet=${ip6addr%%/*}/128"
+			echo "Subnet=${ip6addr%%/*}/128"
 		fi
-
 		for subnet in $subnets; do
 			echo "Subnet=$subnet"
 		done
-	} > $tmp_conf_dir/hosts/$name
+		cat $config_dir/hosts/$name
+	} > $tmp_config_dir/hosts/$name
 
 	proto_run_command "$config" /usr/sbin/tincd \
-		-c $tmp_conf_dir \
+		-c $tmp_config_dir \
 		--no-detach \
-		--mlock \
 		--pidfile=/var/run/tinc.${config}.pid \
 		--logfile=/tmp/log/tinc.${config}.log
 }
@@ -113,3 +115,4 @@ proto_tinc_renew() {
 [ -n "$INCLUDE_ONLY" ] || {
 	add_protocol tinc
 }
+

@@ -5,9 +5,11 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 include $(INCLUDE_DIR)/package.mk
 
 define Package/luci-proto-tinc
-	CATEGORY:=proto
+	SECTION:=net
+	CATEGORY:=protocols
 	TITLE:=Protocol for TincVPN
 	PKGARCH:=all
+	DEPENDS:=+tinc
 endef
 
 define Build/Prepare

@@ -52,3 +52,4 @@ if [ -n "$MTU" ]; then
 fi
 
 proto_send_update "$CONFIG"
+
